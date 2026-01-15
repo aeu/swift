@@ -452,32 +452,6 @@ RelabelArguments::create(ConstraintSystem &cs,
 bool MissingConformance::diagnose(const Solution &solution, bool asNote) const {
   auto *locator = getLocator();
 
-  auto &cs = solution.getConstraintSystem();
-  if (locator) {
-    auto *anchor = locator->getAnchor().dyn_cast<Expr *>();
-
-    Type nonConforming = getNonConformingType();
-
-    if (anchor &&
-        nonConforming &&
-        nonConforming->lookThroughAllOptionalTypes()->isExistentialType() &&
-        getProtocolType()->is<ProtocolType>()) {
-
-      bool sawOpenedGeneric = false;
-      bool sawTPR           = false;
-
-      for (const auto &elt : locator->getPath()) {
-        sawOpenedGeneric |=
-          elt.getKind() == ConstraintLocator::PathElementKind::OpenedGeneric;
-        sawTPR |=
-          elt.getKind() == ConstraintLocator::PathElementKind::TypeParameterRequirement;
-      }
-      if (sawOpenedGeneric && sawTPR &&
-          cs.hasForceOptionalFixAtSameStartLoc(anchor))
-        return false;
-    }
-  }
-
   if (IsContextual) {
     auto &cs = solution.getConstraintSystem();
     auto context = cs.getContextualTypePurpose(locator->getAnchor());

@@ -1455,15 +1455,6 @@ shouldOpenExistentialCallArgument(ValueDecl *callee, unsigned paramIdx,
   if (!result)
     return std::nullopt;
 
-  // Do not implicitly open an existential when it is wrapped in Optional
-  // (e.g. (any P)?). Optional existential opening is handled explicitly
-  // via ForceOptional rather than implicit existential opening.
-  if (auto objTy = argTy->getOptionalObjectType()) {
-    if (objTy->isAnyExistentialType()) {
-      return std::nullopt;
-    }
-  }
-
   // An argument expression that explicitly coerces to an existential
   // disables the implicit opening of the existential unless it's
   // wrapped in parens.
@@ -1481,6 +1472,40 @@ shouldOpenExistentialCallArgument(ValueDecl *callee, unsigned paramIdx,
 
   return result;
 }
+
+
+// Identifies Swift language runtime and standard library implementation
+// modules.
+//
+// Certain diagnostics (e.g. ForceOptional for optional existentials passed
+// to generic parameters) are only appropriate in user code. This helper is
+// used to suppress those fixes while compiling the standard library and its
+// supporting runtime modules, where such patterns are intentional.
+
+static bool isLanguageRuntimeModule(ModuleDecl *module) {
+
+  if (!module)
+    return false;
+  
+  auto &ctx = module->getASTContext();
+
+  if (module == ctx.getStdlibModule())
+    return true;
+
+  if (module == ctx.TheBuiltinModule)
+    return true;
+
+  auto name = module->getName();
+  
+  return name.is("Distributed") ||
+    name.is("Foundation") ||
+    name.is("Observation") ||
+    name.is("StdlibUnittest") ||
+    name.is("_Concurrency") ||
+    name.is("_Differentiation") ||
+    name.is("_StringProcessing");
+}
+
 
 // Match the argument of a call to the parameter.
 static ConstraintSystem::TypeMatchResult matchCallArguments(
@@ -1828,11 +1853,55 @@ static ConstraintSystem::TypeMatchResult matchCallArguments(
         }
       }
 
-      // If the argument is an existential type and the parameter is generic,
-      // consider opening the existential type.
-      if (auto typeVarAndBindingTy = shouldOpenExistentialCallArgument(
-              callee, paramIdx, paramTy, argTy, argExpr, cs)) {
-        // My kingdom for a decent "if let" in C++.
+#if 0 
+// If the argument is an existential type and the parameter is generic,
+// consider opening the existential type.
+if (auto typeVarAndBindingTy = shouldOpenExistentialCallArgument(
+        callee, paramIdx, paramTy, argTy, argExpr, cs)) {
+  // My kingdom for a decent "if let" in C++.
+  TypeVariableType *typeVar;
+  Type bindingTy;
+  std::tie(typeVar, bindingTy) = *typeVarAndBindingTy;
+
+  ExistentialArchetypeType *openedArchetype;
+
+  // Open the argument type.
+  argTy = argTy.transformRec([&](TypeBase *t) -> std::optional<Type> {
+    if (t->isAnyExistentialType()) {
+      Type openedTy;
+      std::tie(openedTy, openedArchetype) =
+          cs.openAnyExistentialType(t, cs.getConstraintLocator(loc));
+
+      return openedTy;
+    }
+
+    return std::nullopt;
+  });
+
+  openedExistentials.push_back({typeVar, openedArchetype});
+}
+#endif     
+
+      // If an argument is an optional existential (e.g. `(any P)?`)
+      // and we are about to open it for a generic parameter, record a
+      // ForceOptional fix before existential opening occurs. This is
+      // to make sure we diagnose the value-level issue (optional must
+      // be unwrapped or given a default) instead of emitting a
+      // misleading conformance failure after opening.
+
+      if( auto typeVarAndBindingTy = shouldOpenExistentialCallArgument(callee, paramIdx, paramTy, argTy, argExpr, cs) )
+      {
+        if (cs.shouldAttemptFixes()) {
+          auto *module = cs.DC ? cs.DC->getParentModule() : nullptr ;
+          if (!isLanguageRuntimeModule(module)) {
+            if (Type optObject = argTy->getOptionalObjectType()) {
+              Type unwrapped = optObject->lookThroughAllOptionalTypes();
+              if (unwrapped->isAnyExistentialType()) {
+                cs.recordFix(ForceOptional::create(cs, argTy, unwrapped, cs.getConstraintLocator(loc)));
+              }
+            }
+          }
+        }
         TypeVariableType *typeVar;
         Type bindingTy;
         std::tie(typeVar, bindingTy) = *typeVarAndBindingTy;
@@ -1852,9 +1921,9 @@ static ConstraintSystem::TypeMatchResult matchCallArguments(
           return std::nullopt;
         });
 
-        openedExistentials.push_back({typeVar, openedArchetype});
+        openedExistentials.push_back({typeVar, openedArchetype});        
       }
-
+   
       // If we have a compound function reference (e.g `fn($x:)`), respect
       // the parameter label given. Otherwise look at the argument label.
       auto wrapperArgLabel = compoundParamLabel.empty() ? argument.getLabel()
@@ -8450,42 +8519,8 @@ ConstraintSystem::matchTypes(Type type1, Type type2, ConstraintKind kind,
       constraints.push_back(
         Constraint::createFixed(*this, constraintKind, fix, type1, type2,
                                 fixedLocator));
-
-      if (fix->getKind() == FixKind::ForceOptional) {
-        if (auto obj = type1->getOptionalObjectType()) {
-          if (obj->isAnyExistentialType()) {
-            constraints.back()->setFavored();
-          }
-        }
-      }
     }
 
-    bool suppressDeepEquality = false;
-
-    if (auto obj = type1->getOptionalObjectType()) {
-      if (obj->isAnyExistentialType() && type2->hasTypeVariable())
-        suppressDeepEquality = true;
-    }
-
-    for (auto *constraint : constraints) {
-      if (constraint->getKind() == ConstraintKind::Bind && !suppressDeepEquality)
-        constraint->setFavored();
-    }
-
-    // Disfavour deep equality for optional existential conversions like (any P)? to (some P)?
-    if (auto lhsObj = type1->getOptionalObjectType()) {
-      if (lhsObj->isAnyExistentialType()) {
-        for (auto *c : constraints) {
-          if (c->isFavored()) {
-            if (auto restriction = c->getRestriction()) {
-              if (*restriction == ConversionRestrictionKind::DeepEquality) {
-                c->setFavored(false);
-              }
-            }
-          }
-        }
-      }
-    }
     // Sort favored constraints first.
     std::sort(constraints.begin(), constraints.end(),
               [&](Constraint *lhs, Constraint *rhs) -> bool {
@@ -16456,66 +16491,6 @@ ConstraintSystem::addArgumentConversionConstraintImpl(
       addUnsolvedConstraint(
           Constraint::create(*this, kind, first, second, loc, referencedVars));
       return SolutionKind::Solved;
-    }
-  }
-
-  // SE-0375: Optional existential -> Optional opaque generic.
-  // If forcing the optional makes the conversion viable, apply ForceOptional.
-  bool shouldApplyForceOptional = false;
-  TypeVariableType *destTV = nullptr;
-
-  if (shouldAttemptFixes()){
-    if (first && first->isOptional()) {
-      if (Type fromObj = first->getOptionalObjectType()) {
-        if (fromObj->isExistentialType()) {
-          if (Type toObj = second->getOptionalObjectType()) {
-            destTV = toObj->getAs<TypeVariableType>();
-            if (destTV) {
-              auto *rep = getRepresentative(destTV);
-              if (!ForceOptionalTypeVars.count(rep)) {
-                shouldApplyForceOptional = true;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  if (shouldApplyForceOptional) {
-    if (auto *loc = getConstraintLocator(locator)) {
-      if( auto anchor = loc->getAnchor()) {
-        if (auto *expr = anchor.dyn_cast<Expr *>()) {
-          if (auto *binary = dyn_cast<BinaryExpr>(expr)) {
-            if (auto *odr = dyn_cast<OverloadedDeclRefExpr>(binary->getFn())) {
-              for (auto *decl : odr->getDecls()) {
-                if (decl->getBaseName().userFacingName() == "??") {
-                  return matchTypes(first,
-                                    second,
-                                    kind,
-                                    TMF_GenerateConstraints,
-                                    locator);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    auto fix = ForceOptional::create(*this,
-                                     first,
-                                     second,
-                                     getConstraintLocator(locator));
-
-    recordFix(fix);
-
-    Type base = second->getOptionalObjectType();
-    if (!base)
-      base = second;
-
-    if (auto *tv = base->getAs<TypeVariableType>()) {
-      auto *rep = getRepresentative(tv);
-      ForceOptionalTypeVars.insert(rep);
     }
   }
   return matchTypes(first, second, kind, TMF_GenerateConstraints, locator);

@@ -1,0 +1,42 @@
+alfonso@swift:/mnt/storage/work/swift-working/61733$ ./trun.sh
+=== RUN START ===
+2026-01-16T02:41:31,223992989+00:00
+pwd: /mnt/storage/work/swift-working/61733
+swiftc: /mnt/storage/work/swift-project/build/Ninja-RelWithDebInfoAssert/swift-linux-x86_64/bin/swiftc
+Swift version 6.3-dev (LLVM 2a87a9d6a0f9e19, Swift d187569285b9329)
+Target: x86_64-unknown-linux-gnu
+Build config: +assertions
+d187569285b93298ca2e84b07698f3a6fd36c26a
+AEU_BINDINGS=
+AEU_FIXREQFAIL=
+AEU_MATCHTYPES=
+=================
+cat 61733.swift
+protocol P {}
+struct S: P {}
+
+func takesOptionalP(_: (some P)?) {}
+
+// Test Case 01
+func passOptional(foo: (any P)?) {
+    takesOptionalP(foo)
+}
+
+AEU_BINDINGS=1 AEU_FIXREQFAIL=1 AEU_MATCHTYPES=1 swiftc -Xfrontend -debug-constraints 61733.swift
+61733.swift:8:5: error: type 'any P' cannot conform to 'P' [#ProtocolTypeNonConformance]
+ 2 | struct S: P {}
+ 3 | 
+ 4 | func takesOptionalP(_: (some P)?) {}
+   |      `- note: required by global function 'takesOptionalP' where 'some P' = 'any P'
+ 5 | 
+ 6 | // Test Case 01
+ 7 | func passOptional(foo: (any P)?) {
+ 8 |     takesOptionalP(foo)
+   |     |- error: type 'any P' cannot conform to 'P' [#ProtocolTypeNonConformance]
+   |     `- note: only concrete types such as structs, enums and classes can conform to protocols
+ 9 | }
+10 | 
+
+[#ProtocolTypeNonConformance]: <https://docs.swift.org/compiler/documentation/diagnostics/protocol-type-non-conformance>
+alfonso@swift:/mnt/storage/work/swift-working/61733$ 
+

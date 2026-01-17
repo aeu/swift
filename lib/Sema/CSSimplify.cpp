@@ -1882,46 +1882,90 @@ if (auto typeVarAndBindingTy = shouldOpenExistentialCallArgument(
 }
 #endif     
 
-      // If an argument is an optional existential (e.g. `(any P)?`)
-      // and we are about to open it for a generic parameter, record a
-      // ForceOptional fix before existential opening occurs. This is
-      // to make sure we diagnose the value-level issue (optional must
-      // be unwrapped or given a default) instead of emitting a
-      // misleading conformance failure after opening.
+      auto shouldOpenExistentialArgument =
+        [&]() -> std::optional<std::pair<TypeVariableType*, Type>> {
+          if (std::getenv("AEU_MATCHTYPES")) {
+            llvm::errs() << "aeu : shoeca entered the lambda\n" ;
+          }
+          auto opened = shouldOpenExistentialCallArgument(
+              callee, paramIdx, paramTy, argTy, argExpr, cs);
+          if (!opened) {
+            if (std::getenv("AEU_MATCHTYPES")) {
+              llvm::errs() << "aeu : shoeca opened was bad, returning out\n" ;
+            }
+            return std::nullopt;
+          }
 
-      if( auto typeVarAndBindingTy = shouldOpenExistentialCallArgument(callee, paramIdx, paramTy, argTy, argExpr, cs) )
-      {
-        if (cs.shouldAttemptFixes()) {
-          auto *module = cs.DC ? cs.DC->getParentModule() : nullptr ;
-          if (!isLanguageRuntimeModule(module)) {
-            if (Type optObject = argTy->getOptionalObjectType()) {
-              Type unwrapped = optObject->lookThroughAllOptionalTypes();
-              if (unwrapped->isAnyExistentialType()) {
-                cs.recordFix(ForceOptional::create(cs, argTy, unwrapped, cs.getConstraintLocator(loc)));
+          if (std::getenv("AEU_MATCHTYPES")) {
+            llvm::errs() << "aeu : shoeca about to enter gating logic\n" ;
+          }
+          if (cs.shouldAttemptFixes()) {
+            if (std::getenv("AEU_MATCHTYPES")) {
+              llvm::errs() << "aeu : shoeca should attempt fixes\n" ;
+            }
+            auto *module = cs.DC ? cs.DC->getParentModule() : nullptr;
+            if (!isLanguageRuntimeModule(module)) {
+              if (std::getenv("AEU_MATCHTYPES")) {
+                llvm::errs() << "aeu : shoeca is not language runtime\n" ;
+              }
+              if (Type optObject = argTy->getOptionalObjectType()) {
+                if (std::getenv("AEU_MATCHTYPES")) {
+                  llvm::errs() << "aeu : shoeca is optional object\n" ;
+                }
+                Type unwrapped = optObject->lookThroughAllOptionalTypes();
+                if (unwrapped->isAnyExistentialType()) {
+                  if (std::getenv("AEU_MATCHTYPES")) {
+                    llvm::errs() << "aeu : shoeca lambda recording fix, returning nullopt\n" ;
+                  }
+                  cs.recordFix(ForceOptional::create(
+                      cs, argTy, unwrapped, cs.getConstraintLocator(loc)));
+                  return std::nullopt; // critical: suppress opening
+                }
               }
             }
           }
+          if (std::getenv("AEU_MATCHTYPES")) {
+            llvm::errs() << "aeu : shoeca lambda returning opened\n" ;
+          }
+          return opened; // allow opening only when we did NOT record ForceOptional
+        };
+
+      if (auto typeVarAndBindingTy = shouldOpenExistentialArgument()) {
+        if (std::getenv("AEU_MATCHTYPES")) {
+          llvm::errs() << "aeu : shoeca non lambda\n" ;
         }
         TypeVariableType *typeVar;
         Type bindingTy;
         std::tie(typeVar, bindingTy) = *typeVarAndBindingTy;
-
+      
         ExistentialArchetypeType *openedArchetype;
-
+      
         // Open the argument type.
         argTy = argTy.transformRec([&](TypeBase *t) -> std::optional<Type> {
           if (t->isAnyExistentialType()) {
+            if (std::getenv("AEU_MATCHTYPES")) {
+              llvm::errs() << "aeu : shoeca t is any existential\n" ;
+            }
             Type openedTy;
             std::tie(openedTy, openedArchetype) =
                 cs.openAnyExistentialType(t, cs.getConstraintLocator(loc));
-
+      
+            if (std::getenv("AEU_MATCHTYPES")) {
+              llvm::errs() << "aeu : shoeca post forceoptional, returning openedTy\n" ;
+            }
             return openedTy;
           }
-
+      
+          if (std::getenv("AEU_MATCHTYPES")) {
+            llvm::errs() << "aeu : shoeca post forceoptional, returning nullopt\n" ;
+          }
           return std::nullopt;
         });
-
-        openedExistentials.push_back({typeVar, openedArchetype});        
+      
+        if (std::getenv("AEU_MATCHTYPES")) {
+          llvm::errs() << "aeu : shoeca post forceoptional, pushing back openedExistentials\n" ;
+        }
+        openedExistentials.push_back({typeVar, openedArchetype});
       }
    
       // If we have a compound function reference (e.g `fn($x:)`), respect

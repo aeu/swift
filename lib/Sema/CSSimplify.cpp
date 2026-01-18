@@ -1871,13 +1871,14 @@ static ConstraintSystem::TypeMatchResult matchCallArguments(
 
             if (unwrapped->isAnyExistentialType()) {
               if (std::getenv("AEU_MATCHTYPES")) {
-                llvm::errs() << "aeu : shoeca about to record force optional\n" ;
+                llvm::errs() << "aeu : shoeca about to record force optional and will return SolutionKind::Solved\n" ;
               }
               cs.recordFix(ForceOptional::create(cs,
                                                  argTy,
                                                  unwrapped,
                                                  cs.getConstraintLocator(loc)));
               didRecordForceOptional = true;
+              return ConstraintSystem::TypeMatchResult::success();
             }
           }
         }

@@ -1,12 +1,12 @@
 $ ./trun.sh
 === RUN START ===
-2026-01-19T01:43:25,959370793+00:00
+2026-01-19T02:38:02,106443801+00:00
 pwd: /mnt/storage/work/swift-working/61733
 swiftc: /mnt/storage/work/swift-project/build/Ninja-RelWithDebInfoAssert/swift-linux-x86_64/bin/swiftc
-Swift version 6.3-dev (LLVM 2a87a9d6a0f9e19, Swift 5fad69dba5ab280)
+Swift version 6.3-dev (LLVM 2a87a9d6a0f9e19, Swift db9eeb5bc16268b)
 Target: x86_64-unknown-linux-gnu
 Build config: +assertions
-5fad69dba5ab2805e234d69a0825eda038efcbaa
+db9eeb5bc16268b600d56a297d295e91c4baa403
 AEU_BINDINGS=
 AEU_FIXREQFAIL=
 AEU_MATCHTYPES=
@@ -25,7 +25,8 @@ func passOptional(foo: (any P)?) {
 AEU_BINDINGS=1 AEU_FIXREQFAIL=1 AEU_MATCHTYPES=1 swiftc -Xfrontend -debug-constraints 61733.swift
 aeu: FO precheck entered
 aeu: its not language runtime
-aeu: FO recording and returning ambiguous
+aeu: FO recording and returning FAILURE
+aeu: FO path hit at /mnt/storage/work/swift-project/swift/lib/Sema/CSSimplify.cpp:1877
 61733.swift:8:5: error: failed to produce diagnostic for expression; please submit a bug report (https://swift.org/contributing/#reporting-bugs)
  6 | // Test Case 01
  7 | func passOptional(foo: (any P)?) {

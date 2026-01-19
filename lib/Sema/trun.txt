@@ -1,12 +1,12 @@
 $ ./trun.sh
 === RUN START ===
-2026-01-18T22:29:04,297108957+00:00
+2026-01-19T01:43:25,959370793+00:00
 pwd: /mnt/storage/work/swift-working/61733
 swiftc: /mnt/storage/work/swift-project/build/Ninja-RelWithDebInfoAssert/swift-linux-x86_64/bin/swiftc
-Swift version 6.3-dev (LLVM 2a87a9d6a0f9e19, Swift 74124c345a64b7c)
+Swift version 6.3-dev (LLVM 2a87a9d6a0f9e19, Swift 5fad69dba5ab280)
 Target: x86_64-unknown-linux-gnu
 Build config: +assertions
-74124c345a64b7ce00ffae979e9917ff79e60e4b
+5fad69dba5ab2805e234d69a0825eda038efcbaa
 AEU_BINDINGS=
 AEU_FIXREQFAIL=
 AEU_MATCHTYPES=
@@ -23,21 +23,14 @@ func passOptional(foo: (any P)?) {
 }
 
 AEU_BINDINGS=1 AEU_FIXREQFAIL=1 AEU_MATCHTYPES=1 swiftc -Xfrontend -debug-constraints 61733.swift
-aeu : about to call shoeca
-aeu : shouldAttemptFixes is true
-aeu : !opened
-61733.swift:8:5: error: type 'any P' cannot conform to 'P' [#ProtocolTypeNonConformance]
- 2 | struct S: P {}
- 3 | 
- 4 | func takesOptionalP(_: (some P)?) {}
-   |      `- note: required by global function 'takesOptionalP' where 'some P' = 'any P'
- 5 | 
+aeu: FO precheck entered
+aeu: its not language runtime
+aeu: FO recording and returning ambiguous
+61733.swift:8:5: error: failed to produce diagnostic for expression; please submit a bug report (https://swift.org/contributing/#reporting-bugs)
  6 | // Test Case 01
  7 | func passOptional(foo: (any P)?) {
  8 |     takesOptionalP(foo)
-   |     |- error: type 'any P' cannot conform to 'P' [#ProtocolTypeNonConformance]
-   |     `- note: only concrete types such as structs, enums and classes can conform to protocols
+   |     `- error: failed to produce diagnostic for expression; please submit a bug report (https://swift.org/contributing/#reporting-bugs)
  9 | }
 10 | 
 
-[#ProtocolTypeNonConformance]: <https://docs.swift.org/compiler/documentation/diagnostics/protocol-type-non-conformance>

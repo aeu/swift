@@ -1452,9 +1452,14 @@ shouldOpenExistentialCallArgument(ValueDecl *callee, unsigned paramIdx,
                                   Type paramTy, Type argTy, Expr *argExpr,
                                   ConstraintSystem &cs) {
   auto result = canOpenExistentialCallArgument(callee, paramIdx, paramTy, argTy);
-  if (!result)
+  if (!result) {
+    if (std::getenv("AEU_MATCHTYPES")) {
+      llvm::errs() << "aeu: canOpenExistentialCallArgument returned nullopt\n";
+      llvm::errs() << "aeu: paramTy = " << paramTy << "\n";
+      llvm::errs() << "aeu: argTy   = " << argTy << "\n";
+    }
     return std::nullopt;
-
+  }
   // An argument expression that explicitly coerces to an existential
   // disables the implicit opening of the existential unless it's
   // wrapped in parens.
@@ -1853,17 +1858,33 @@ static ConstraintSystem::TypeMatchResult matchCallArguments(
         }
       }
 
+      // NEW: run this BEFORE shouldOpenExistentialCallArgument
+      if (cs.shouldAttemptFixes()) {
+          if (std::getenv("AEU_MATCHTYPES"))
+              llvm::errs() << "aeu: FO precheck entered\n";
+          auto *module = cs.DC ? cs.DC->getParentModule() : nullptr;
+          if (module && !isLanguageRuntimeModule(module)) {
+              if (std::getenv("AEU_MATCHTYPES"))
+                  llvm::errs() << "aeu: its not language runtime\n";
+              if (Type optObject = argTy->getOptionalObjectType()) {
+                  Type unwrapped = optObject->lookThroughAllOptionalTypes();
+                  if (unwrapped->isAnyExistentialType()) {
+                      if (std::getenv("AEU_MATCHTYPES"))
+                          llvm::errs() << "aeu: FO recording and returning ambiguous\n";
+
+                      cs.recordFix(ForceOptional::create(cs, argTy, unwrapped,
+                                                         cs.getConstraintLocator(loc)));
+                      return ConstraintSystem::TypeMatchResult::failure();
+                  }
+              }
+          }
+      }
+
       if (std::getenv("AEU_MATCHTYPES")) {
-        llvm::errs() << "aeu : about to call shoeca\n" ;
-        if (cs.shouldAttemptFixes()) {
-          llvm::errs() << "aeu : shouldAttemptFixes is true\n" ;
-        } else {
-          llvm::errs() << "aeu : shouldAttemptFixes is false\n" ;
-        }
+        llvm::errs() << "aeu : about to call shoeca after the new preblock\n" ;
       }
       auto opened = shouldOpenExistentialCallArgument(callee, paramIdx,
                                                       paramTy, argTy, argExpr, cs);
-
 
       if (! opened) {
         if (std::getenv("AEU_MATCHTYPES")) {
@@ -1873,29 +1894,6 @@ static ConstraintSystem::TypeMatchResult matchCallArguments(
 
       if (opened) {
         bool didRecordForceOptional = false;
-
-        if (cs.shouldAttemptFixes()) {
-          if (std::getenv("AEU_MATCHTYPES")) {
-            llvm::errs() << "aeu : shoeca should attempt fixes passed\n" ;
-          }
-          auto *module = cs.DC ? cs.DC->getParentModule() : nullptr;
-          if (module && !isLanguageRuntimeModule(module)) {
-            if (std::getenv("AEU_MATCHTYPES")) {
-              llvm::errs() << "aeu : shoeca isn't a language module\n" ;
-            }
-            if (Type optObject = argTy->getOptionalObjectType()) {
-              Type unwrapped = optObject->lookThroughAllOptionalTypes();
-              if (unwrapped->isAnyExistentialType()) {
-                cs.recordFix(ForceOptional::create(cs, argTy, unwrapped, cs.getConstraintLocator(loc)));
-                if (std::getenv("AEU_MATCHTYPES")) {
-                  llvm::errs() << "aeu : shoeca just recorded a forceoptional\n" ;
-                }
-                didRecordForceOptional = true;
-              }
-            }
-          }
-        }
-
         if (!didRecordForceOptional) {
           if (std::getenv("AEU_MATCHTYPES")) {
             llvm::errs() << "aeu : shoeca didn't record force optional\n" ;

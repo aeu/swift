@@ -1,12 +1,12 @@
-$ ./trun.sh
+./trun.sh
 === RUN START ===
-2026-01-19T02:38:02,106443801+00:00
+2026-01-19T04:24:19,257253651+00:00
 pwd: /mnt/storage/work/swift-working/61733
 swiftc: /mnt/storage/work/swift-project/build/Ninja-RelWithDebInfoAssert/swift-linux-x86_64/bin/swiftc
-Swift version 6.3-dev (LLVM 2a87a9d6a0f9e19, Swift db9eeb5bc16268b)
+Swift version 6.3-dev (LLVM 2a87a9d6a0f9e19, Swift 183b8c1aedb3e21)
 Target: x86_64-unknown-linux-gnu
 Build config: +assertions
-db9eeb5bc16268b600d56a297d295e91c4baa403
+183b8c1aedb3e215c1b67004a06fe8f51afd988b
 AEU_BINDINGS=
 AEU_FIXREQFAIL=
 AEU_MATCHTYPES=
@@ -23,15 +23,37 @@ func passOptional(foo: (any P)?) {
 }
 
 AEU_BINDINGS=1 AEU_FIXREQFAIL=1 AEU_MATCHTYPES=1 swiftc -Xfrontend -debug-constraints 61733.swift
-aeu: FO precheck entered
-aeu: its not language runtime
-aeu: FO recording and returning FAILURE
-aeu: FO path hit at /mnt/storage/work/swift-project/swift/lib/Sema/CSSimplify.cpp:1877
-61733.swift:8:5: error: failed to produce diagnostic for expression; please submit a bug report (https://swift.org/contributing/#reporting-bugs)
+aeu : about to call shoea after the new lambda
+aeu: I'm in that new lambda
+aeu: got module and it's not runtime
+aeu: recording force optional
+aeu: about to return soeca
+aeu: canOpenExistentialCallArgument returned nullopt
+aeu: paramTy = _?
+aeu: argTy   = (any P)?
+aeu : opened was !
+61733.swift:8:5: error: type 'any P' cannot conform to 'P' [#ProtocolTypeNonConformance]
+ 2 | struct S: P {}
+ 3 | 
+ 4 | func takesOptionalP(_: (some P)?) {}
+   |      `- note: required by global function 'takesOptionalP' where 'some P' = 'any P'
+ 5 | 
  6 | // Test Case 01
  7 | func passOptional(foo: (any P)?) {
  8 |     takesOptionalP(foo)
-   |     `- error: failed to produce diagnostic for expression; please submit a bug report (https://swift.org/contributing/#reporting-bugs)
+   |     |- error: type 'any P' cannot conform to 'P' [#ProtocolTypeNonConformance]
+   |     `- note: only concrete types such as structs, enums and classes can conform to protocols
  9 | }
 10 | 
 
+61733.swift:8:20: error: value of optional type '(any P)?' must be unwrapped to a value of type 'any P'
+ 6 | // Test Case 01
+ 7 | func passOptional(foo: (any P)?) {
+ 8 |     takesOptionalP(foo)
+   |                    |- error: value of optional type '(any P)?' must be unwrapped to a value of type 'any P'
+   |                    |- note: coalesce using '??' to provide a default when the optional value contains 'nil'
+   |                    `- note: force-unwrap using '!' to abort execution if the optional value contains 'nil'
+ 9 | }
+10 | 
+
+[#ProtocolTypeNonConformance]: <https://docs.swift.org/compiler/documentation/diagnostics/protocol-type-non-conformance>

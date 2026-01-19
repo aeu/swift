@@ -1858,73 +1858,78 @@ static ConstraintSystem::TypeMatchResult matchCallArguments(
         }
       }
 
-      using OpenInfo = std::pair<std::pair<TypeVariableType*, Type>, Type>;
       auto shouldOpenExistentialArgument =
-      [&]() -> std::optional<OpenInfo> {
-      
-        Type argType = argTy;
-      
+      [&]() -> std::optional<std::pair<TypeVariableType *, Type>> {
+        Type argTypeForOpening = argTy;
         auto *module = cs.DC ? cs.DC->getParentModule() : nullptr;
-        if (module && !isLanguageRuntimeModule(module)) {
+    
+        if (module &&
+            !isLanguageRuntimeModule(module) &&
+            cs.shouldAttemptFixes()) {
+    
           if (std::getenv("AEU_MATCHTYPES")) {
-            llvm::errs() << "aeu : got the module and it wasn't a language runtime module\n" ;
+            llvm::errs() << "aeu : wasn't language runtime and should attempt fixes is true\n" ;
           }
-          if (Type obj = argType->getOptionalObjectType()) {
-            Type unwrapped = obj->lookThroughAllOptionalTypes();
-            if (unwrapped->isAnyExistentialType() &&
-                cs.shouldAttemptFixes()) {
-                if (std::getenv("AEU_MATCHTYPES")) {
-                  llvm::errs() << "aeu : about to recordfix\n" ;
-                }
-                cs.recordFix(
-                ForceOptional::create(cs, argTy, unwrapped,
-                                       cs.getConstraintLocator(loc)));
-      
-              argType = unwrapped;   // critical
+
+          if (Type optObject = argTypeForOpening->getOptionalObjectType()) {
+            Type unwrapped = optObject->lookThroughAllOptionalTypes();
+            if (unwrapped->isAnyExistentialType()) {
+              if (std::getenv("AEU_MATCHTYPES")) {
+                llvm::errs() << "aeu : was existential, am recording a Force Optional\n" ;
+              }
+              cs.recordFix(
+                  ForceOptional::create(
+                      cs,
+                      argTy,              // original optional
+                      unwrapped,          // any P
+                      cs.getConstraintLocator(loc)));
+    
+              // *** THIS is the critical line ***
+              argTypeForOpening = unwrapped;
             }
           }
         }
-        if (std::getenv("AEU_MATCHTYPES")) {
-          llvm::errs() << "aeu : about to call soeca and then return openinfo\n" ;
-        }
-        if (auto opened =
-              shouldOpenExistentialCallArgument(
-                  callee, paramIdx, paramTy,
-                  argType, argExpr, cs)) {
-      
-          return OpenInfo{*opened, argType};
-        }
-      
-        return std::nullopt;
+        return shouldOpenExistentialCallArgument(
+            callee,
+            paramIdx,
+            paramTy,
+            argTypeForOpening,   // not argTy
+            argExpr,
+            cs);
       };
       if (std::getenv("AEU_MATCHTYPES")) {
         llvm::errs() << "aeu : about to call shoea after the new lambda with openedPair\n" ;
       }
 
-      if (auto info = shouldOpenExistentialArgument()) {
-        auto &[openedPair, openedArgType] = *info;
-      
+      if (auto typeVarAndBindingTy = shouldOpenExistentialArgument()) {
         TypeVariableType *typeVar;
         Type bindingTy;
-        std::tie(typeVar, bindingTy) = openedPair;
-      
+        std::tie(typeVar, bindingTy) = *typeVarAndBindingTy;
+    
         ExistentialArchetypeType *openedArchetype = nullptr;
-      
-        argTy = openedArgType.transformRec([&](TypeBase *t)
-            -> std::optional<Type> {
-          if (!t->isAnyExistentialType())
-            return std::nullopt;
-      
-          Type openedTy;
-          std::tie(openedTy, openedArchetype) =
-            cs.openAnyExistentialType(t,
-              cs.getConstraintLocator(loc));
-      
-          return openedTy;
+    
+        argTy = argTy.transformRec([&](TypeBase *t)-> std::optional<Type> {
+            if (!t->isAnyExistentialType())
+                return std::nullopt;
+
+            if (std::getenv("AEU_MATCHTYPES")) {
+              llvm::errs() << "aeu : did not return nullopt after the check for existential\n" ;
+            }
+
+            Type openedTy;
+            std::tie(openedTy, openedArchetype) =
+                cs.openAnyExistentialType(
+                    t,
+                    cs.getConstraintLocator(loc));
+    
+            return openedTy;
         });
-      
+
+        if (std::getenv("AEU_MATCHTYPES")) {
+          llvm::errs() << "aeu : about to push back\n" ;
+        }
         openedExistentials.push_back({typeVar, openedArchetype});
-      }
+    }
       // If we have a compound function reference (e.g `fn($x:)`), respect
       // the parameter label given. Otherwise look at the argument label.
       auto wrapperArgLabel = compoundParamLabel.empty() ? argument.getLabel()
